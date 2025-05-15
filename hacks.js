@@ -26,7 +26,7 @@ const config = {
     ui: {
         visible: true,
     },
-    debug: false,
+    debug: true,
 };
 
 // Proxy to enable preserveDrawingBuffer
