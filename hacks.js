@@ -12,13 +12,13 @@ const config = {
     aimAssist: {
         enabled: false,
         fovRadius: 150,
-        strength: 1.2,
-        smoothing: 0.4,
+        strength: 1.3,
+        smoothing: 0.35,
     },
     esp: {
         enabled: true,
         playerOnly: true,
-        threshold: 4.5,
+        threshold: 4.3,
     },
     wireframe: {
         enabled: true,
@@ -26,7 +26,7 @@ const config = {
     ui: {
         visible: true,
     },
-    debug: true,
+    debug: true, // Enabled by default
 };
 
 // Proxy to enable preserveDrawingBuffer
@@ -56,7 +56,7 @@ WebGL.shaderSource = new Proxy(WebGL.shaderSource, {
                 vDepth = gl_Position.z;
                 vColor = uIsPlayer && uEspEnabled && vDepth > uThreshold ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0);
                 if (uIsPlayer && uWireframeEnabled && vDepth > uThreshold) {
-                    gl_Position.z += 0.005;
+                    gl_Position.z += 0.004;
                 }
             `);
         } else if (shaderCode.includes('SV_Target0')) {
@@ -72,11 +72,12 @@ WebGL.shaderSource = new Proxy(WebGL.shaderSource, {
                 if (uEspEnabled && uIsPlayer && vDepth > uThreshold) {
                     SV_Target0 = vColor;
                 } else if (uWireframeEnabled && uIsPlayer && vDepth > uThreshold) {
-                    SV_Target0 = vec4(0.0, 1.0, 0.0, 0.6);
+                    SV_Target0 = vec4(0.0, 1.0, 0.0, 0.7);
                 }
             `);
         }
         args[1] = shaderCode;
+        if (config.debug) console.log('Shader modified:', shaderCode.substring(0, 100) + '...');
         return Reflect.apply(...arguments);
     }
 });
@@ -98,7 +99,11 @@ let aimData = { movementX: 0, movementY: 0, count: 0, prevX: 0, prevY: 0 };
 WebGL.drawElements = new Proxy(WebGL.drawElements, {
     apply(target, thisArgs, args) {
         const program = thisArgs.getParameter(thisArgs.CURRENT_PROGRAM);
-        if (!program?.uniforms) {
+        if (!program) {
+            if (config.debug) console.warn('No WebGL program found');
+            return Reflect.apply(...arguments);
+        }
+        if (!program.uniforms) {
             program.uniforms = {
                 espEnabled: thisArgs.getUniformLocation(program, 'uEspEnabled'),
                 wireframeEnabled: thisArgs.getUniformLocation(program, 'uWireframeEnabled'),
@@ -107,7 +112,7 @@ WebGL.drawElements = new Proxy(WebGL.drawElements, {
             };
         }
 
-        const isPlayerModel = args[1] > 1500 && args[1] < 6000;
+        const isPlayerModel = args[1] > 1500 && args[1] < 5500; // Tighter range for players
         thisArgs.uniform1i(program.uniforms.espEnabled, config.esp.enabled && config.esp.playerOnly && isPlayerModel && config.ui.visible);
         thisArgs.uniform1i(program.uniforms.wireframeEnabled, config.wireframe.enabled && isPlayerModel && config.ui.visible);
         thisArgs.uniform1f(program.uniforms.threshold, config.esp.threshold);
@@ -127,6 +132,7 @@ WebGL.drawElements = new Proxy(WebGL.drawElements, {
 
             try {
                 thisArgs.readPixels(x, y, width, height, thisArgs.RGBA, thisArgs.UNSIGNED_BYTE, pixels);
+                if (config.debug) console.log(`Read ${width}x${height} pixels`);
             } catch (e) {
                 if (config.debug) console.error('Pixel read error:', e);
                 return;
@@ -164,14 +170,14 @@ window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
             apply(innerTarget, innerThis, innerArgs) {
                 const canvas = document.querySelector('canvas');
                 const isPlaying = canvas && canvas.style.cursor === 'none';
-                fovEl.style.display = config.aimAssist.enabled && isPlaying && config.ui.visible ? 'block' : 'none';
+                fovEl.style.display = config.aimAssist.enabled && isPlaying && config.ui.visible ? 'block !important' : 'none';
 
                 if (aimData.count > 0 && config.aimAssist.enabled && config.ui.visible) {
                     const { strength, smoothing } = config.aimAssist;
                     const avgX = aimData.movementX / aimData.count;
                     const avgY = aimData.movementY / aimData.count;
                     const dist = Math.sqrt(avgX * avgX + avgY * avgY);
-                    const speed = Math.min(0.15 * dist, 5);
+                    const speed = Math.min(0.15 * dist, 4.5);
 
                     let targetX = speed * (avgX / dist || 0);
                     let targetY = speed * (avgY / dist || 0);
@@ -181,8 +187,8 @@ window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
 
                     aimData.movementX *= strength;
                     aimData.movementY *= strength;
-                    aimData.movementX += (Math.random() - 0.5) * 1.2;
-                    aimData.movementY += (Math.random() - 0.5) * 1.2;
+                    aimData.movementX += (Math.random() - 0.5) * 1.0;
+                    aimData.movementY += (Math.random() - 0.5) * 1.0;
 
                     try {
                         const event = new MouseEvent('mousemove', {
@@ -194,12 +200,9 @@ window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
                             clientY: window.innerHeight / 2,
                         });
                         canvas.dispatchEvent(event);
+                        if (config.debug) console.log(`Dispatched mousemove: (${aimData.movementX.toFixed(2)}, ${aimData.movementY.toFixed(2)})`);
                     } catch (e) {
                         if (config.debug) console.error('Mouse event error:', e);
-                    }
-
-                    if (config.debug) {
-                        console.log(`Aim assist moved: (${aimData.movementX.toFixed(2)}, ${aimData.movementY.toFixed(2)}), Dist: ${dist.toFixed(2)}`);
                     }
 
                     aimData.prevX = aimData.movementX;
@@ -220,85 +223,92 @@ window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
     }
 });
 
-// Sleek, modern black UI
+// Ultra-modern black UI with glassmorphism
 const el = document.createElement('div');
 el.innerHTML = `<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
     .training-ui {
-        position: fixed;
-        right: 20px;
-        top: 20px;
-        padding: 15px;
-        background: #1c2526;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        z-index: 100000;
-        color: #e0e0e0;
-        font-family: 'Inter', sans-serif;
-        font-size: 14px;
-        width: 180px;
-        transition: opacity 0.3s ease, transform 0.3s ease;
-        opacity: 1;
+        position: fixed !important;
+        right: 20px !important;
+        top: 20px !important;
+        padding: 16px !important;
+        background: rgba(20, 25, 30, 0.85) !important;
+        backdrop-filter: blur(10px) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        z-index: 1000000 !important;
+        color: #e0e0e0 !important;
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 13px !important;
+        width: 200px !important;
+        transition: opacity 0.4s ease, transform 0.4s ease !important;
+        opacity: 1 !important;
     }
     .training-ui.hidden {
-        opacity: 0;
-        transform: translateY(-20px);
-        pointer-events: none;
+        opacity: 0 !important;
+        transform: translateY(-30px) !important;
+        pointer-events: none !important;
     }
     .training-ui h3 {
-        margin: 0 0 12px;
-        font-size: 16px;
-        font-weight: 600;
-        text-align: center;
-        color: #00d4ff;
+        margin: 0 0 12px !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        text-align: center !important;
+        color: #00ffcc !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
     }
     .training-ui label {
-        display: flex;
-        align-items: center;
-        margin: 8px 0;
-        cursor: pointer;
-        font-size: 13px;
-        transition: color 0.2s ease;
+        display: flex !important;
+        align-items: center !important;
+        margin: 10px 0 !important;
+        cursor: pointer !important;
+        font-size: 12px !important;
+        transition: color 0.2s ease !important;
     }
     .training-ui label:hover {
-        color: #00d4ff;
+        color: #00ffcc !important;
     }
     .training-ui input[type="checkbox"] {
-        margin-right: 8px;
-        accent-color: #00d4ff;
-        width: 16px;
-        height: 16px;
-        cursor: pointer;
+        margin-right: 10px !important;
+        accent-color: #00ffcc !important;
+        width: 16px !important;
+        height: 16px !important;
+        cursor: pointer !important;
+        border-radius: 4px !important;
     }
     .status-msg {
-        position: fixed;
-        left: 20px;
-        bottom: 20px;
-        background: #1c2526;
-        color: #e0e0e0;
-        padding: 10px 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.5);
-        z-index: 100001;
-        font-family: 'Inter', sans-serif;
-        font-size: 13px;
-        animation: slideIn 0.3s ease-out, slideOut 0.3s 2s ease-in forwards;
+        position: fixed !important;
+        left: 20px !important;
+        bottom: 20px !important;
+        background: rgba(20, 25, 30, 0.9) !important;
+        backdrop-filter: blur(8px) !important;
+        color: #e0e0e0 !important;
+        padding: 12px 24px !important;
+        border-radius: 8px !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        z-index: 1000001 !important;
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 12px !important;
+        animation: slideIn 0.4s ease-out, slideOut 0.4s 2.5s ease-in forwards !important;
     }
     @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes slideOut { from { transform: none; opacity: 1; } to { transform: translateX(-100%); opacity: 0; } }
     .fov-circle {
-        position: fixed;
-        left: 50%;
-        top: 50%;
-        width: ${config.aimAssist.fovRadius * 2}px;
-        height: ${config.aimAssist.fovRadius * 2}px;
-        border-radius: 50%;
-        border: 1.5px solid #00d4ff;
-        box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
-        transform: translate(-50%, -50%);
-        display: none;
-        pointer-events: none;
-        z-index: 99999;
+        position: fixed !important;
+        left: 50% !important;
+        top: 50% !important;
+        width: ${config.aimAssist.fovRadius * 2}px !important;
+        height: ${config.aimAssist.fovRadius * 2}px !important;
+        border-radius: 50% !important;
+        border: 1.5px solid #00ffcc !important;
+        box-shadow: 0 0 10px rgba(0, 255, 204, 0.6) !important;
+        transform: translate(-50%, -50%) !important;
+        display: none !important;
+        pointer-events: none !important;
+        z-index: 999999 !important;
     }
 </style>
 <div class="training-ui">
@@ -310,14 +320,21 @@ el.innerHTML = `<style>
 <div class="status-msg" style="display: none;"></div>
 <div class="fov-circle"></div>`;
 
-// UI initialization with MutationObserver
+// UI initialization with robust detection
 const msgEl = el.querySelector('.status-msg');
 const fovEl = el.querySelector('.fov-circle');
 
 function initUI() {
+    let uiInjected = false;
     const appendUI = () => {
-        if (!document.body.contains(el)) {
-            document.body.appendChild(el);
+        if (uiInjected) return;
+        if (config.debug) console.log('Attempting to inject UI');
+        const target = document.body || document.documentElement;
+        if (!target.contains(el)) {
+            target.appendChild(el);
+            uiInjected = true;
+            if (config.debug) console.log('UI injected successfully');
+
             const ui = document.querySelector('.training-ui');
             ui.classList.toggle('hidden', !config.ui.visible);
 
@@ -379,18 +396,30 @@ function initUI() {
         }
     };
 
-    // Use MutationObserver to detect canvas or DOM changes
+    // Robust canvas detection
     const observer = new MutationObserver((mutations) => {
+        if (uiInjected) return;
         if (document.querySelector('canvas') || mutations.some(m => m.addedNodes.length > 0)) {
             appendUI();
-            observer.disconnect();
+            if (config.debug) console.log('Canvas detected via MutationObserver');
         }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    // Fallback: Try appending after a delay
-    setTimeout(appendUI, 2000);
+    // Polling fallback
+    const maxAttempts = 10;
+    let attempts = 0;
+    const pollUI = setInterval(() => {
+        if (uiInjected || attempts >= maxAttempts) {
+            clearInterval(pollUI);
+            if (!uiInjected && config.debug) console.warn('UI injection failed after max attempts');
+            return;
+        }
+        appendUI();
+        attempts++;
+        if (config.debug) console.log(`Polling attempt ${attempts}/${maxAttempts}`);
+    }, 1000);
 }
 
 function showMsg(name, enabled) {
@@ -398,6 +427,7 @@ function showMsg(name, enabled) {
     msgEl.style.display = 'none';
     void msgEl.offsetWidth;
     msgEl.style.display = 'block';
+    if (config.debug) console.log(`Showing message: ${name} ${enabled ? 'ON' : 'OFF'}`);
 }
 
 // Initialize UI
