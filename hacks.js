@@ -1,7 +1,7 @@
 /**
  * Hypothetical training utility for 1v1.LOL (v3.8) for educational purposes.
  * Provides aim assist, ESP, and wireframe as visual overlays for practice.
- * NOT intended for use in online multiplayer, as it may violate terms of service.
+ * NOT intended for use in online multiplayer, as it violates terms of service.
  * Use in a private, offline game development context only.
  */
 
@@ -11,25 +11,25 @@ const WebGL = WebGL2RenderingContext.prototype;
 const config = {
     aimAssist: {
         enabled: false,
-        fovRadius: 150, // Fixed FOV for aim assist
-        strength: 1.2, // Fixed strength for smooth tracking
-        smoothing: 0.4, // Fixed smoothing for natural movement
+        fovRadius: 150,
+        strength: 1.2,
+        smoothing: 0.4,
     },
     esp: {
         enabled: true,
-        playerOnly: true, // Highlight only player models
-        threshold: 4.5, // Depth threshold for ESP
+        playerOnly: true,
+        threshold: 4.5,
     },
     wireframe: {
-        enabled: true, // Wireframe for player models
+        enabled: true,
     },
     ui: {
-        visible: true, // UI visible by default
+        visible: true,
     },
-    debug: false, // Debug mode off
+    debug: false,
 };
 
-// Proxy to enable preserveDrawingBuffer for pixel reading
+// Proxy to enable preserveDrawingBuffer
 HTMLCanvasElement.prototype.getContext = new Proxy(HTMLCanvasElement.prototype.getContext, {
     apply(target, thisArgs, args) {
         if (args[0] === 'webgl2' && args[1]) {
@@ -44,7 +44,6 @@ WebGL.shaderSource = new Proxy(WebGL.shaderSource, {
     apply(target, thisArgs, args) {
         let shaderCode = args[1];
         if (shaderCode.includes('gl_Position')) {
-            // Vertex shader: Add depth and player detection
             shaderCode = shaderCode.replace('void main', `
                 out float vDepth;
                 out vec4 vColor;
@@ -57,11 +56,10 @@ WebGL.shaderSource = new Proxy(WebGL.shaderSource, {
                 vDepth = gl_Position.z;
                 vColor = uIsPlayer && uEspEnabled && vDepth > uThreshold ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(0.0);
                 if (uIsPlayer && uWireframeEnabled && vDepth > uThreshold) {
-                    gl_Position.z += 0.005; // Slight offset for wireframe
+                    gl_Position.z += 0.005;
                 }
             `);
         } else if (shaderCode.includes('SV_Target0')) {
-            // Fragment shader: Apply red ESP or green wireframe
             shaderCode = shaderCode.replace('void main', `
                 in float vDepth;
                 in vec4 vColor;
@@ -72,9 +70,9 @@ WebGL.shaderSource = new Proxy(WebGL.shaderSource, {
                 void main
             `).replace(/return;/, `
                 if (uEspEnabled && uIsPlayer && vDepth > uThreshold) {
-                    SV_Target0 = vColor; // Red ESP for players
+                    SV_Target0 = vColor;
                 } else if (uWireframeEnabled && uIsPlayer && vDepth > uThreshold) {
-                    SV_Target0 = vec4(0.0, 1.0, 0.0, 0.6); // Green wireframe
+                    SV_Target0 = vec4(0.0, 1.0, 0.0, 0.6);
                 }
             `);
         }
@@ -100,7 +98,7 @@ let aimData = { movementX: 0, movementY: 0, count: 0, prevX: 0, prevY: 0 };
 WebGL.drawElements = new Proxy(WebGL.drawElements, {
     apply(target, thisArgs, args) {
         const program = thisArgs.getParameter(thisArgs.CURRENT_PROGRAM);
-        if (!program.uniforms) {
+        if (!program?.uniforms) {
             program.uniforms = {
                 espEnabled: thisArgs.getUniformLocation(program, 'uEspEnabled'),
                 wireframeEnabled: thisArgs.getUniformLocation(program, 'uWireframeEnabled'),
@@ -109,7 +107,6 @@ WebGL.drawElements = new Proxy(WebGL.drawElements, {
             };
         }
 
-        // Heuristic for player models (based on vertex count)
         const isPlayerModel = args[1] > 1500 && args[1] < 6000;
         thisArgs.uniform1i(program.uniforms.espEnabled, config.esp.enabled && config.esp.playerOnly && isPlayerModel && config.ui.visible);
         thisArgs.uniform1i(program.uniforms.wireframeEnabled, config.wireframe.enabled && isPlayerModel && config.ui.visible);
@@ -160,7 +157,7 @@ WebGL.drawElements = new Proxy(WebGL.drawElements, {
     }
 });
 
-// Aim assist movement logic
+// Aim assist movement
 window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
     apply(target, thisArgs, args) {
         args[0] = new Proxy(args[0], {
@@ -174,31 +171,32 @@ window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
                     const avgX = aimData.movementX / aimData.count;
                     const avgY = aimData.movementY / aimData.count;
                     const dist = Math.sqrt(avgX * avgX + avgY * avgY);
-                    const speed = Math.min(0.15 * dist, 5); // Dynamic speed cap
+                    const speed = Math.min(0.15 * dist, 5);
 
                     let targetX = speed * (avgX / dist || 0);
                     let targetY = speed * (avgY / dist || 0);
 
-                    // Smooth movement with velocity prediction
                     aimData.movementX = aimData.prevX * smoothing + targetX * (1 - smoothing);
                     aimData.movementY = aimData.prevY * smoothing + targetY * (1 - smoothing);
 
-                    // Apply strength and slight randomization
                     aimData.movementX *= strength;
                     aimData.movementY *= strength;
                     aimData.movementX += (Math.random() - 0.5) * 1.2;
                     aimData.movementY += (Math.random() - 0.5) * 1.2;
 
-                    // Dispatch mouse event for aim assist
-                    const event = new MouseEvent('mousemove', {
-                        movementX: aimData.movementX,
-                        movementY: aimData.movementY,
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: window.innerWidth / 2,
-                        clientY: window.innerHeight / 2,
-                    });
-                    canvas.dispatchEvent(event);
+                    try {
+                        const event = new MouseEvent('mousemove', {
+                            movementX: aimData.movementX,
+                            movementY: aimData.movementY,
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: window.innerWidth / 2,
+                            clientY: window.innerHeight / 2,
+                        });
+                        canvas.dispatchEvent(event);
+                    } catch (e) {
+                        if (config.debug) console.error('Mouse event error:', e);
+                    }
 
                     if (config.debug) {
                         console.log(`Aim assist moved: (${aimData.movementX.toFixed(2)}, ${aimData.movementY.toFixed(2)}), Dist: ${dist.toFixed(2)}`);
@@ -222,53 +220,69 @@ window.requestAnimationFrame = new Proxy(window.requestAnimationFrame, {
     }
 });
 
-// Enhanced UI
+// Sleek, modern black UI
 const el = document.createElement('div');
 el.innerHTML = `<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
     .training-ui {
         position: fixed;
         right: 20px;
         top: 20px;
         padding: 15px;
-        background: linear-gradient(135deg, #1e90ff, #00b7eb);
-        border-radius: 10px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-        z-index: 10000;
-        color: #fff;
-        font-family: 'Roboto', Arial, sans-serif;
-        font-size: 16px;
-        width: 200px;
+        background: #1c2526;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        z-index: 100000;
+        color: #e0e0e0;
+        font-family: 'Inter', sans-serif;
+        font-size: 14px;
+        width: 180px;
+        transition: opacity 0.3s ease, transform 0.3s ease;
+        opacity: 1;
     }
-    .training-ui.hidden { display: none; }
+    .training-ui.hidden {
+        opacity: 0;
+        transform: translateY(-20px);
+        pointer-events: none;
+    }
     .training-ui h3 {
-        margin: 0 0 10px;
-        font-size: 18px;
+        margin: 0 0 12px;
+        font-size: 16px;
+        font-weight: 600;
         text-align: center;
+        color: #00d4ff;
     }
     .training-ui label {
         display: flex;
         align-items: center;
-        margin: 10px 0;
+        margin: 8px 0;
         cursor: pointer;
+        font-size: 13px;
+        transition: color 0.2s ease;
+    }
+    .training-ui label:hover {
+        color: #00d4ff;
     }
     .training-ui input[type="checkbox"] {
-        margin-right: 10px;
-        accent-color: #00b7eb;
+        margin-right: 8px;
+        accent-color: #00d4ff;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
     }
     .status-msg {
         position: fixed;
         left: 20px;
         bottom: 20px;
-        background: #1a1a1a;
-        color: #fff;
+        background: #1c2526;
+        color: #e0e0e0;
         padding: 10px 20px;
         border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-        z-index: 10000;
-        font-family: 'Roboto', Arial, sans-serif;
-        font-size: 14px;
-        animation: slideIn 0.3s ease-out, slideOut 0.3s 2.5s ease-in forwards;
-        pointer-events: none;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.5);
+        z-index: 100001;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px;
+        animation: slideIn 0.3s ease-out, slideOut 0.3s 2s ease-in forwards;
     }
     @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes slideOut { from { transform: none; opacity: 1; } to { transform: translateX(-100%); opacity: 0; } }
@@ -279,91 +293,105 @@ el.innerHTML = `<style>
         width: ${config.aimAssist.fovRadius * 2}px;
         height: ${config.aimAssist.fovRadius * 2}px;
         border-radius: 50%;
-        border: 2px solid rgba(255, 255, 255, 0.8);
-        box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        border: 1.5px solid #00d4ff;
+        box-shadow: 0 0 8px rgba(0, 212, 255, 0.5);
         transform: translate(-50%, -50%);
         display: none;
         pointer-events: none;
-        z-index: 9999;
+        z-index: 99999;
     }
 </style>
 <div class="training-ui">
-    <h3>Training Utility</h3>
-    <label><input type="checkbox" id="aimAssistToggle"> Aim Assist (T)</label>
-    <label><input type="checkbox" id="espToggle" checked> ESP (M)</label>
-    <label><input type="checkbox" id="wireframeToggle" checked> Wireframe (N)</label>
+    <h3>Training Hub</h3>
+    <label><input type="checkbox" id="aimAssistToggle"> Aim Assist</label>
+    <label><input type="checkbox" id="espToggle" checked> Player ESP</label>
+    <label><input type="checkbox" id="wireframeToggle" checked> Wireframe</label>
 </div>
 <div class="status-msg" style="display: none;"></div>
 <div class="fov-circle"></div>`;
 
+// UI initialization with MutationObserver
 const msgEl = el.querySelector('.status-msg');
 const fovEl = el.querySelector('.fov-circle');
 
-window.addEventListener('DOMContentLoaded', () => {
-    document.body.appendChild(el);
+function initUI() {
+    const appendUI = () => {
+        if (!document.body.contains(el)) {
+            document.body.appendChild(el);
+            const ui = document.querySelector('.training-ui');
+            ui.classList.toggle('hidden', !config.ui.visible);
 
-    const ui = document.querySelector('.training-ui');
-    const aimAssistToggle = document.getElementById('aimAssistToggle');
-    const espToggle = document.getElementById('espToggle');
-    const wireframeToggle = document.getElementById('wireframeToggle');
+            const aimAssistToggle = document.getElementById('aimAssistToggle');
+            const espToggle = document.getElementById('espToggle');
+            const wireframeToggle = document.getElementById('wireframeToggle');
 
-    // Initialize UI visibility
-    ui.classList.toggle('hidden', !config.ui.visible);
-
-    // Checkbox event listeners
-    aimAssistToggle.addEventListener('change', () => {
-        if (config.ui.visible) {
-            config.aimAssist.enabled = aimAssistToggle.checked;
-            showMsg('Aim Assist', config.aimAssist.enabled);
-        }
-    });
-
-    espToggle.addEventListener('change', () => {
-        if (config.ui.visible) {
-            config.esp.enabled = espToggle.checked;
-            showMsg('ESP', config.esp.enabled);
-        }
-    });
-
-    wireframeToggle.addEventListener('change', () => {
-        if (config.ui.visible) {
-            config.wireframe.enabled = wireframeToggle.checked;
-            showMsg('Wireframe', config.wireframe.enabled);
-        }
-    });
-
-    // Keybinds
-    window.addEventListener('keyup', (event) => {
-        switch (event.key.toUpperCase()) {
-            case 'H':
-                config.ui.visible = !config.ui.visible;
-                ui.classList.toggle('hidden', !config.ui.visible);
-                showMsg('Training UI', config.ui.visible);
-                break;
-            case 'T':
+            aimAssistToggle.addEventListener('change', () => {
                 if (config.ui.visible) {
-                    config.aimAssist.enabled = !config.aimAssist.enabled;
-                    aimAssistToggle.checked = config.aimAssist.enabled;
+                    config.aimAssist.enabled = aimAssistToggle.checked;
                     showMsg('Aim Assist', config.aimAssist.enabled);
                 }
-                break;
-            case 'M':
+            });
+
+            espToggle.addEventListener('change', () => {
                 if (config.ui.visible) {
-                    config.esp.enabled = !config.esp.enabled;
-                    espToggle.checked = config.esp.enabled;
-                    showMsg('ESP', config.esp.enabled);
+                    config.esp.enabled = espToggle.checked;
+                    showMsg('Player ESP', config.esp.enabled);
                 }
-                break;
-            case 'N':
+            });
+
+            wireframeToggle.addEventListener('change', () => {
                 if (config.ui.visible) {
-                    config.wireframe.enabled = !config.wireframe.enabled;
-                    wireframeToggle.checked = config.wireframe.enabled;
+                    config.wireframe.enabled = wireframeToggle.checked;
                     showMsg('Wireframe', config.wireframe.enabled);
                 }
-                break;
+            });
+
+            window.addEventListener('keyup', (event) => {
+                switch (event.key.toUpperCase()) {
+                    case 'H':
+                        config.ui.visible = !config.ui.visible;
+                        ui.classList.toggle('hidden', !config.ui.visible);
+                        showMsg('Training Hub', config.ui.visible);
+                        break;
+                    case 'T':
+                        if (config.ui.visible) {
+                            config.aimAssist.enabled = !config.aimAssist.enabled;
+                            aimAssistToggle.checked = config.aimAssist.enabled;
+                            showMsg('Aim Assist', config.aimAssist.enabled);
+                        }
+                        break;
+                    case 'M':
+                        if (config.ui.visible) {
+                            config.esp.enabled = !config.esp.enabled;
+                            espToggle.checked = config.esp.enabled;
+                            showMsg('Player ESP', config.esp.enabled);
+                        }
+                        break;
+                    case 'N':
+                        if (config.ui.visible) {
+                            config.wireframe.enabled = !config.wireframe.enabled;
+                            wireframeToggle.checked = config.wireframe.enabled;
+                            showMsg('Wireframe', config.wireframe.enabled);
+                        }
+                        break;
+                }
+            });
+        }
+    };
+
+    // Use MutationObserver to detect canvas or DOM changes
+    const observer = new MutationObserver((mutations) => {
+        if (document.querySelector('canvas') || mutations.some(m => m.addedNodes.length > 0)) {
+            appendUI();
+            observer.disconnect();
         }
     });
-});
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Fallback: Try appending after a delay
+    setTimeout(appendUI, 2000);
+}
 
 function showMsg(name, enabled) {
     msgEl.innerText = `${name}: ${enabled ? 'ON ✅' : 'OFF ❌'}`;
@@ -371,3 +399,6 @@ function showMsg(name, enabled) {
     void msgEl.offsetWidth;
     msgEl.style.display = 'block';
 }
+
+// Initialize UI
+initUI();
